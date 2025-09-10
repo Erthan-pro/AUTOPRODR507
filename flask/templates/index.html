@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload d'Images</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f5f7fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background-color: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 8px 24px rgba(149, 157, 165, 0.2);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 24px;
+            font-weight: 600;
+        }
+
+        .upload-area {
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            border-color: #2980b9;
+            background-color: rgba(52, 152, 219, 0.05);
+        }
+
+        .upload-area.active {
+            border-color: #2ecc71;
+            background-color: rgba(46, 204, 113, 0.05);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #3498db;
+            margin-bottom: 15px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .upload-text {
+            color: #555;
+            margin-bottom: 8px;
+        }
+
+        .file-name {
+            color: #3498db;
+            font-weight: 500;
+            margin-top: 10px;
+            word-break: break-all;
+            display: none;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .upload-btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.3s;
+        }
+
+        .upload-btn:hover {
+            background-color: #2980b9;
+        }
+
+        .upload-btn:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .success {
+            background-color: #e8f8f5;
+            color: #27ae60;
+            border: 1px solid #2ecc71;
+        }
+
+        .error {
+            background-color: #fdedeb;
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Upload d'Images</h1>
+
+        <div id="upload-area" class="upload-area">
+            <div class="upload-icon">📁</div>
+            <p class="upload-text">Cliquez ou déposez une image ici</p>
+            <p class="upload-text small">(JPG, PNG, GIF jusqu'à 5MB)</p>
+            <input type="file" id="file-input" class="file-input" accept="image/*">
+            <p id="file-name" class="file-name"></p>
+            <img id="preview-image" class="preview-image" src="" alt="Aperçu de l'image">
+        </div>
+
+        <button id="upload-btn" class="upload-btn" disabled>Envoyer l'image</button>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+            const fileName = document.getElementById('file-name');
+            const previewImage = document.getElementById('preview-image');
+            const uploadBtn = document.getElementById('upload-btn');
+            const result = document.getElementById('result');
+
+            // Événements pour le glisser-déposer
+            uploadArea.addEventListener('click', () => fileInput.click());
+
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('active');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('active');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('active');
+
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    handleFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            // Gestion de la sélection de fichier
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) {
+                    handleFile(fileInput.files[0]);
+                }
+            });
+
+            // Fonction pour traiter le fichier sélectionné
+            function handleFile(file) {
+                // Vérifier si c'est une image
+                if (!file.type.match('image.*')) {
+                    showResult('Veuillez sélectionner une image valide.', false);
+                    return;
+                }
+
+                // Vérifier la taille (max 5MB)
+                if (file.size > 5 * 1024 * 1024) {
+                    showResult('L\'image est trop volumineuse. Maximum 5MB autorisé.', false);
+                    return;
+                }
+
+                // Afficher le nom du fichier
+                fileName.textContent = file.name;
+                fileName.style.display = 'block';
+
+                // Afficher l'aperçu
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewImage.src = e.target.result;
+                    previewImage.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+
+                // Activer le bouton d'upload
+                uploadBtn.disabled = false;
+            }
+
+            // Gestion de l'envoi du fichier
+            uploadBtn.addEventListener('click', async () => {
+                if (!fileInput.files.length) return;
+
+                const file = fileInput.files[0];
+                const formData = new FormData();
+                formData.append('file', file);
+
+                uploadBtn.disabled = true;
+                uploadBtn.textContent = 'Envoi en cours...';
+
+                try {
+                    const response = await fetch('http://localhost:8080/api/images/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.text();
+
+                    if (response.ok) {
+                        showResult(data, true);
+                    } else {
+                        showResult(`Erreur: ${data}`, false);
+                    }
+                } catch (error) {
+                    showResult(`Erreur de connexion: ${error.message}`, false);
+                } finally {
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = "Envoyer l'image";
+                }
+            });
+
+            // Afficher le résultat
+            function showResult(message, isSuccess) {
+                result.textContent = message;
+                result.className = `result ${isSuccess ? 'success' : 'error'}`;
+                result.style.display = 'block';
+
+                if (!isSuccess) {
+                    setTimeout(() => {
+                        result.style.display = 'none';
+                    }, 5000);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
