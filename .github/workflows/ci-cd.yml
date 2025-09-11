@@ -20,18 +20,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    # Debug: Afficher la structure du repository
-    - name: Debug - Show repository structure
-      run: |
-        echo "=== Repository structure ==="
-        ls -la
-        echo "=== Looking for pom.xml files ==="
-        find . -name "pom.xml" -type f
-        echo "=== Looking for Python files ==="
-        find . -name "*.py" -type f | head -5
-        echo "=== Looking for requirements.txt ==="
-        find . -name "requirements.txt" -type f
-    
     - name: Set up JDK 17
       uses: actions/setup-java@v3
       with:
@@ -45,113 +33,19 @@ jobs:
     
     - name: Install Python dependencies
       run: |
-        # Chercher requirements.txt dans différents emplacements
-        if [ -f "flask/requirements.txt" ]; then
-          echo "Found requirements.txt in flask/"
-          cd flask
-          pip install -r requirements.txt
-          pip install pytest
-        elif [ -f "requirements.txt" ]; then
-          echo "Found requirements.txt in root"
-          pip install -r requirements.txt
-          pip install pytest
-        elif [ -f "*/requirements.txt" ]; then
-          echo "Found requirements.txt in subdirectory"
-          FLASK_DIR=$(dirname $(find . -name "requirements.txt" | head -1))
-          cd $FLASK_DIR
-          pip install -r requirements.txt
-          pip install pytest
-        else
-          echo "No requirements.txt found, installing basic Flask dependencies"
-          pip install flask pytest requests
-        fi
+        cd flask
+        pip install -r requirements.txt
+        pip install pytest
     
     - name: Run Spring Boot tests
       run: |
-        # Chercher et exécuter les tests Spring Boot
-        if [ -d "springboot-app" ] && [ -f "springboot-app/pom.xml" ]; then
-          echo "Running tests in springboot-app/"
-          cd springboot-app
-          chmod +x mvnw || echo "mvnw not found, using system maven"
-          if [ -f "mvnw" ]; then
-            ./mvnw test
-          else
-            mvn test
-          fi
-        elif [ -f "pom.xml" ]; then
-          echo "Running tests in root directory"
-          chmod +x mvnw || echo "mvnw not found, using system maven"
-          if [ -f "mvnw" ]; then
-            ./mvnw test
-          else
-            mvn test
-          fi
-        else
-          # Chercher pom.xml dans les sous-dossiers
-          POM_DIR=$(find . -name "pom.xml" -type f | head -1)
-          if [ -n "$POM_DIR" ]; then
-            POM_DIR=$(dirname "$POM_DIR")
-            echo "Found pom.xml in $POM_DIR, running tests there"
-            cd "$POM_DIR"
-            chmod +x mvnw || echo "mvnw not found, using system maven"
-            if [ -f "mvnw" ]; then
-              ./mvnw test
-            else
-              mvn test
-            fi
-          else
-            echo "No pom.xml found, skipping Spring Boot tests"
-            echo "Available files:"
-            find . -name "*.java" -o -name "*.xml" | head -10
-          fi
-        fi
+        cd springboot-app
+        ./mvnw test
     
     - name: Run Flask tests
       run: |
-        # Chercher et exécuter les tests Flask
-        if [ -d "flask/tests" ]; then
-          echo "Running Flask tests in flask/tests/"
-          cd flask
-          python -m pytest tests/ -v
-        elif [ -d "tests" ]; then
-          echo "Running Flask tests in root tests/"
-          python -m pytest tests/ -v
-        else
-          # Chercher des fichiers de test
-          TEST_DIR=$(find . -name "test_*.py" -o -name "*_test.py" | head -1)
-          if [ -n "$TEST_DIR" ]; then
-            TEST_DIR=$(dirname "$TEST_DIR")
-            echo "Found tests in $TEST_DIR"
-            cd "$TEST_DIR"
-            python -m pytest . -v
-          else
-            echo "No Flask tests found, creating a simple health check test"
-            # Créer un test basique si aucun test n'existe
-            python -c "
-import sys
-import os
-# Chercher app.py
-app_file = None
-for root, dirs, files in os.walk('.'):
-    if 'app.py' in files:
-        app_file = os.path.join(root, 'app.py')
-        break
-
-if app_file:
-    print(f'Found Flask app at: {app_file}')
-    # Test basique d'import
-    try:
-        sys.path.insert(0, os.path.dirname(app_file))
-        import app
-        print('Flask app imports successfully')
-    except Exception as e:
-        print(f'Flask app import failed: {e}')
-        sys.exit(1)
-else:
-    print('No Flask app found, skipping tests')
-"
-          fi
-        fi
+        cd flask
+        python -m pytest tests/ -v
 
   build-and-push:
     name: Build and Push Docker Images
@@ -172,99 +66,26 @@ else:
         password: ${{ secrets.DOCKER_PASSWORD }}
     
     - name: Build and push Spring Boot image
-      run: |
-        # Trouver où est l'application Spring Boot
-        if [ -d "springboot-app" ]; then
-          SPRING_CONTEXT="./springboot-app"
-        elif [ -f "pom.xml" ]; then
-          SPRING_CONTEXT="./"
-        else
-          POM_DIR=$(find . -name "pom.xml" -type f | head -1)
-          if [ -n "$POM_DIR" ]; then
-            SPRING_CONTEXT=$(dirname "$POM_DIR")
-          else
-            echo "No Spring Boot application found"
-            exit 1
-          fi
-        fi
-        
-        echo "Building Spring Boot image from context: $SPRING_CONTEXT"
-        
-        # Créer un Dockerfile s'il n'existe pas
-        if [ ! -f "$SPRING_CONTEXT/Dockerfile" ]; then
-          echo "Creating Dockerfile for Spring Boot"
-          cat > "$SPRING_CONTEXT/Dockerfile" << EOF
-FROM openjdk:17-jdk-slim
-VOLUME /tmp
-COPY target/*.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java","-jar","/app.jar"]
-EOF
-        fi
-        
-        # Build l'application avant Docker
-        cd "$SPRING_CONTEXT"
-        if [ -f "mvnw" ]; then
-          chmod +x mvnw
-          ./mvnw clean package -DskipTests
-        else
-          mvn clean package -DskipTests
-        fi
-        cd - > /dev/null
-        
-        # Build et push Docker image
-        docker build -t ${{ env.SPRINGBOOT_IMAGE }}:latest -t ${{ env.SPRINGBOOT_IMAGE }}:${{ github.sha }} "$SPRING_CONTEXT"
-        docker push ${{ env.SPRINGBOOT_IMAGE }}:latest
-        docker push ${{ env.SPRINGBOOT_IMAGE }}:${{ github.sha }}
+      uses: docker/build-push-action@v5
+      with:
+        context: ./springboot-app
+        push: true
+        tags: |
+          ${{ env.SPRINGBOOT_IMAGE }}:latest
+          ${{ env.SPRINGBOOT_IMAGE }}:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
     
     - name: Build and push Flask image
-      run: |
-        # Trouver où est l'application Flask
-        if [ -d "flask" ]; then
-          FLASK_CONTEXT="./flask"
-        elif [ -f "app.py" ]; then
-          FLASK_CONTEXT="./"
-        else
-          APP_DIR=$(find . -name "app.py" -type f | head -1)
-          if [ -n "$APP_DIR" ]; then
-            FLASK_CONTEXT=$(dirname "$APP_DIR")
-          else
-            echo "No Flask application found"
-            exit 1
-          fi
-        fi
-        
-        echo "Building Flask image from context: $FLASK_CONTEXT"
-        
-        # Créer requirements.txt s'il n'existe pas
-        if [ ! -f "$FLASK_CONTEXT/requirements.txt" ]; then
-          echo "Creating requirements.txt for Flask"
-          cat > "$FLASK_CONTEXT/requirements.txt" << EOF
-Flask==2.3.2
-requests==2.31.0
-pymongo==4.4.1
-gunicorn==21.2.0
-EOF
-        fi
-        
-        # Créer un Dockerfile s'il n'existe pas
-        if [ ! -f "$FLASK_CONTEXT/Dockerfile" ]; then
-          echo "Creating Dockerfile for Flask"
-          cat > "$FLASK_CONTEXT/Dockerfile" << EOF
-FROM python:3.9-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-EXPOSE 5000
-CMD ["gunicorn", "--host", "0.0.0.0", "--port", "5000", "app:app"]
-EOF
-        fi
-        
-        # Build et push Docker image
-        docker build -t ${{ env.FLASK_IMAGE }}:latest -t ${{ env.FLASK_IMAGE }}:${{ github.sha }} "$FLASK_CONTEXT"
-        docker push ${{ env.FLASK_IMAGE }}:latest
-        docker push ${{ env.FLASK_IMAGE }}:${{ github.sha }}
+      uses: docker/build-push-action@v5
+      with:
+        context: ./flask
+        push: true
+        tags: |
+          ${{ env.FLASK_IMAGE }}:latest
+          ${{ env.FLASK_IMAGE }}:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy to Production
@@ -284,10 +105,10 @@ EOF
         key: ${{ secrets.VM_SSH_KEY }}
         script: |
           # Arrêter les conteneurs existants
-          docker-compose -f docker-compose.prod.yml down || true
+          docker-compose down || true
           
-          # Nettoyer les anciennes images
-          docker system prune -f
+          # Supprimer les anciennes images
+          docker rmi $(docker images -q) || true
           
           # Télécharger les nouvelles images
           docker pull ${{ env.SPRINGBOOT_IMAGE }}:latest
@@ -307,14 +128,6 @@ EOF
                 - SPRING_DATASOURCE_URL=jdbc:mysql://mysql-db:3306/demo
                 - SPRING_DATASOURCE_USERNAME=root
                 - SPRING_DATASOURCE_PASSWORD=root
-                - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-              restart: unless-stopped
-              healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
-                interval: 30s
-                timeout: 10s
-                retries: 3
-                start_period: 40s
             
             flask-service:
               image: ${{ env.FLASK_IMAGE }}:latest
@@ -324,13 +137,6 @@ EOF
                 - mongo-db
               environment:
                 - MONGO_URL=mongodb://mongo-db:27017/demo
-              restart: unless-stopped
-              healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-                interval: 30s
-                timeout: 10s
-                retries: 3
-                start_period: 40s
             
             mysql-db:
               image: mysql:8.0
@@ -341,11 +147,6 @@ EOF
                 - "3306:3306"
               volumes:
                 - mysql_data:/var/lib/mysql
-              restart: unless-stopped
-              healthcheck:
-                test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-                timeout: 20s
-                retries: 10
             
             mongo-db:
               image: mongo:latest
@@ -353,13 +154,6 @@ EOF
                 - "27017:27017"
               volumes:
                 - mongo_data:/data/db
-              restart: unless-stopped
-              healthcheck:
-                test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-                interval: 10s
-                timeout: 10s
-                retries: 5
-                start_period: 40s
           
           volumes:
             mysql_data:
@@ -370,41 +164,8 @@ EOF
           docker-compose -f docker-compose.prod.yml up -d
           
           # Attendre que les services soient prêts
-          echo "Waiting for services to start..."
-          sleep 60
+          sleep 30
           
           # Vérifier que les services fonctionnent
-          echo "Checking services health..."
-          
-          # Vérifier Spring Boot (avec retry)
-          for i in {1..5}; do
-            if curl -f http://localhost:8080/actuator/health 2>/dev/null; then
-              echo "Spring Boot service is healthy"
-              break
-            elif [ $i -eq 5 ]; then
-              echo "Spring Boot service health check failed after 5 attempts"
-              docker-compose -f docker-compose.prod.yml logs springboot-service
-              exit 1
-            else
-              echo "Attempt $i: Spring Boot service not ready, waiting..."
-              sleep 30
-            fi
-          done
-          
-          # Vérifier Flask (avec retry)
-          for i in {1..5}; do
-            if curl -f http://localhost:5000/health 2>/dev/null; then
-              echo "Flask service is healthy"
-              break
-            elif [ $i -eq 5 ]; then
-              echo "Flask service health check failed after 5 attempts"
-              docker-compose -f docker-compose.prod.yml logs flask-service
-              exit 1
-            else
-              echo "Attempt $i: Flask service not ready, waiting..."
-              sleep 30
-            fi
-          done
-          
-          echo "Deployment successful!"
-          docker-compose -f docker-compose.prod.yml ps
+          curl -f http://localhost:8080/health || exit 1
+          curl -f http://localhost:5000/health || exit 1
