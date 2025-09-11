@@ -9,7 +9,7 @@ on:
 env:
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   SPRINGBOOT_IMAGE: ${{ secrets.DOCKER_USERNAME }}/springboot-app
-  FLASK_IMAGE: ${{ secrets.DOCKER_USERNAME }}/flask-app
+  FLASK_IMAGE: ${{ secrets.DOCKER_USERNAME }}/flask
 
 jobs:
   test:
@@ -33,7 +33,7 @@ jobs:
     
     - name: Install Python dependencies
       run: |
-        cd flask-app
+        cd flask
         pip install -r requirements.txt
         pip install pytest
     
@@ -44,7 +44,7 @@ jobs:
     
     - name: Run Flask tests
       run: |
-        cd flask-app
+        cd flask
         python -m pytest tests/ -v
 
   build-and-push:
@@ -79,7 +79,7 @@ jobs:
     - name: Build and push Flask image
       uses: docker/build-push-action@v5
       with:
-        context: ./flask-app
+        context: ./flask
         push: true
         tags: |
           ${{ env.FLASK_IMAGE }}:latest
