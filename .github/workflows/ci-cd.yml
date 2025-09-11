@@ -1,93 +1,35 @@
-name: CI/CD Pipeline
+name: Build Flask
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-env:
-  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-  FLASK_IMAGE: ${{ secrets.DOCKER_USERNAME }}/flask-app
+    branches:
+      - main
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - run: |
-        cd flask
-        pip install -r requirements.txt
-        pip install pytest
-        pytest tests/ -v
+      - id: checkout
+        name: Checkout code
+        uses: actions/checkout@v4
 
-  build-and-push:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-    - uses: actions/checkout@v4
-    
-    - uses: docker/setup-buildx-action@v3
-    
-    - uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-    
-    - uses: docker/build-push-action@v5
-      with:
-        context: ./flask
-        file: ./flask/Dockerfile
-        push: true
-        tags: |
-          ${{ env.FLASK_IMAGE }}:latest
-          ${{ env.FLASK_IMAGE }}:${{ github.sha }}
+      - name: Set up Docker BuildX
+        uses: docker/setup-buildx-action@v2
+        with:
+            buildkitd-flags: --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main'
-    steps:
-    - uses: actions/checkout@v4
-    - uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.VM_HOST }}
-        username: ${{ secrets.VM_USERNAME }}
-        key: ${{ secrets.VM_SSH_KEY }}
-        script: |
-          docker-compose down || true
-          docker image prune -f
-          docker pull ${{ env.FLASK_IMAGE }}:latest
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
-          cat > docker-compose.prod.yml << EOF
-          version: '3.8'
-          services:
-            flask-service:
-              image: ${{ env.FLASK_IMAGE }}:latest
-              ports:
-                - "5000:5000"
-              depends_on:
-                - mongo-db
-              environment:
-                - MONGO_URL=mongodb://mongo-db:27017/demo
-              restart: unless-stopped
-
-            mongo-db:
-              image: mongo:latest
-              ports:
-                - "27017:27017"
-              volumes:
-                - mongo_data:/data/db
-              restart: unless-stopped
-          volumes:
-            mongo_data:
-          EOF
-
-          docker-compose -f docker-compose.prod.yml up -d
-          sleep 30
-          curl -f http://localhost:5000/health || exit 1
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+            context: ./flask
+            push: true
+            tags: |
+              ${{ vars.DOCKER_HUB_USERNAME }}/flask-app:latest
+              ${{ vars.DOCKER_HUB_USERNAME }}/flask-app:${{ github.run_number }}
+            file: ./flask/Dockerfile
